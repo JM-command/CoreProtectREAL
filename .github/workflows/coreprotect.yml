@@ -98,7 +98,10 @@ jobs:
       - name: Build
         if: steps.check.outputs.skip == 'false'
         working-directory: upstream
-        run: mvn -B -ntp clean package
+        # -Dproject.branch=development est OBLIGATOIRE : sans lui, plugin.yml sort
+        # avec un champ `branch` vide et le plugin refuse de s'activer
+        # ("Invalid plugin version (branch has not been set)").
+        run: mvn -B -ntp clean package -Dproject.branch=development
 
       - name: Recuperer le .jar
         if: steps.check.outputs.skip == 'false'
@@ -121,7 +124,14 @@ jobs:
         run: |
           unzip -p dist/CoreProtect.jar plugin.yml | head -20
           unzip -l dist/CoreProtect.jar | grep -q 'net/coreprotect/CoreProtect.class' \
-            && echo "OK : classe principale presente"
+            || { echo "::error::Classe principale absente du jar"; exit 1; }
+          # garde-fou : sans branch renseigne, le plugin ne s'active pas sur le serveur
+          BRANCH=$(unzip -p dist/CoreProtect.jar plugin.yml | sed -n 's/^branch: *//p' | tr -d '"')
+          if [ -z "$BRANCH" ] || [ "$BRANCH" = '${project.branch}' ]; then
+            echo "::error::plugin.yml sans branch -> le plugin refusera de demarrer"
+            exit 1
+          fi
+          echo "OK : classe principale presente, branch=$BRANCH"
 
       - name: Upload artifact
         if: steps.check.outputs.skip == 'false'
